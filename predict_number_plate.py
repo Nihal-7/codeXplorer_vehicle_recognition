@@ -4,10 +4,13 @@ import hydra
 import torch
 import easyocr
 import cv2
-import csv
+# import csv
 import re
 import pytz
+import openpyxl
+from openpyxl import Workbook
 from datetime import datetime
+from torch._C import _current_autograd_node
 
 
 from ultralytics.yolo.engine.predictor import BasePredictor
@@ -29,27 +32,35 @@ def validate_indian_number_plate(number_plate):
         return False
 
 def extract_number_plate_text(image, coordinates):
-    x, y, w, h = int(coordinates[0]), int(coordinates[1]), int(coordinates[2]),int(coordinates[3])
+    x, y, w, h = int(coordinates[0]), int(coordinates[1]), int(coordinates[2]), int(coordinates[3])
     plate_region = image[y:h, x:w]
-    
+
     gray_plate = cv2.cvtColor(plate_region, cv2.COLOR_RGB2GRAY)
     results = reader.readtext(gray_plate)
-    
+
     confidence_threshold = 0.4
     detected_text = ""
-    
+
     for result in results:
         if len(result[1]) > 8 and len(result[1]) < 11 and result[2] > confidence_threshold:
             detected_text = result[1]
             if detected_text not in stored_ocr_values and validate_indian_number_plate(detected_text):
                 current_time_ist = datetime.now(ist_timezone).strftime('%Y-%m-%d %H:%M:%S')
-                data_with_timestamp = [[current_time_ist, detected_text]]
-                csv_file_name = 'result.csv'
-                with open(csv_file_name, 'a', newline='') as csvfile:
-                    csv_writer = csv.writer(csvfile)
-                    if csvfile.tell() == 0:
-                        csv_writer.writerow(['Timestamp', 'Number Plate'])
-                    csv_writer.writerows(data_with_timestamp)
+                data_with_timestamp = [current_time_ist, detected_text]
+                xlsx_file_name = 'result.xlsx'
+
+                # Check if the Excel file exists or create one
+                try:
+                    workbook = openpyxl.load_workbook(xlsx_file_name)
+                    worksheet = workbook.active
+                except FileNotFoundError:
+                    workbook = Workbook()
+                    worksheet = workbook.active
+                    worksheet.append(['Timestamp', 'Number Plate'])
+
+                worksheet.append(data_with_timestamp)
+                workbook.save(xlsx_file_name)
+
                 stored_ocr_values.add(detected_text)
 
     return str(detected_text)
